@@ -34,10 +34,14 @@ export const DatasetTrainingPage: React.FC = () => {
         api.post<DatasetValidation>('/api/admin/dataset/validate'),
         api.get<TrainingStatus>('/api/admin/training/status')
       ]);
-      setValidation(valRes.data);
-      setTrainingStatus(trainRes.data);
+      if (valRes.data && typeof valRes.data === 'object' && 'is_valid' in valRes.data) {
+        setValidation(valRes.data);
+      }
+      if (trainRes.data && typeof trainRes.data === 'object' && 'status' in trainRes.data) {
+        setTrainingStatus(trainRes.data);
+      }
     } catch (err: any) {
-      console.error('Failed to fetch dataset status:', err);
+      console.log('Backend dataset status fetch skipped or failed.');
     }
   };
 

@@ -34,14 +34,23 @@ export const DashboardPage: React.FC = () => {
         api.get<DashboardStats>('/api/dashboard/stats'),
         api.get<DetectionRecord[]>('/api/detections?sort=newest')
       ]);
-      setStats(statsRes.data);
-      setRecentScans(historyRes.data.slice(0, 5));
+
+      if (
+        statsRes.data &&
+        typeof statsRes.data === 'object' &&
+        Array.isArray(historyRes.data)
+      ) {
+        setStats(statsRes.data);
+        setRecentScans(historyRes.data.slice(0, 5));
+      } else {
+        throw new Error('Non-JSON response received from backend');
+      }
     } catch (err) {
       // Fallback to demo stats for Vercel deployment
       const dStats = getDemoStats();
       const dHistory = getDemoHistory();
       setStats(dStats);
-      setRecentScans(dHistory.slice(0, 5));
+      setRecentScans(Array.isArray(dHistory) ? dHistory.slice(0, 5) : []);
     } finally {
       setLoading(false);
     }
@@ -234,7 +243,7 @@ export const DashboardPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 text-slate-700">
-                {recentScans.map((record) => (
+                {(Array.isArray(recentScans) ? recentScans : []).map((record) => (
                   <tr key={record.id} className="hover:bg-slate-50 transition">
                     <td className="px-5 py-3.5 font-mono text-slate-900 font-bold">#{record.id}</td>
                     <td className="px-5 py-3.5">

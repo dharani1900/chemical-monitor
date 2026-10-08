@@ -35,10 +35,15 @@ export const DetectionHistoryPage: React.FC = () => {
         url += `&search=${encodeURIComponent(search)}`;
       }
       const res = await api.get<DetectionRecord[]>(url);
-      setRecords(res.data);
+      if (Array.isArray(res.data)) {
+        setRecords(res.data);
+      } else {
+        throw new Error('Non-array history returned');
+      }
     } catch (err) {
       // Fallback to local demo history for Vercel deployment
       let dHistory = getDemoHistory();
+      if (!Array.isArray(dHistory)) dHistory = [];
       if (statusFilter !== 'all') {
         dHistory = dHistory.filter(r => r.prediction === statusFilter);
       }
@@ -158,7 +163,7 @@ export const DetectionHistoryPage: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {records.map((record) => (
+          {(Array.isArray(records) ? records : []).map((record) => (
             <div
               key={record.id}
               className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition flex flex-col justify-between"

@@ -81,10 +81,13 @@ export const ImageDetectionPage: React.FC = () => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
-      setResult(res.data);
-
-      if (res.data.prediction === 'leakage') {
-        triggerAlarm();
+      if (res.data && typeof res.data === 'object' && res.data.id) {
+        setResult(res.data);
+        if (res.data.prediction === 'leakage') {
+          triggerAlarm();
+        }
+      } else {
+        throw new Error('Non-JSON analysis response returned');
       }
     } catch (err: any) {
       // Fallback to interactive client-side demo analysis on Vercel deployment

@@ -16,4 +16,22 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Interceptor to reject HTML rewrites returned by Vercel for missing backend routes
+api.interceptors.response.use(
+  (response) => {
+    const contentType = String(response.headers['content-type'] || '');
+    if (
+      (typeof response.data === 'string' &&
+        (response.data.trim().startsWith('<!DOCTYPE') ||
+         response.data.trim().startsWith('<html') ||
+         response.data.trim().startsWith('<!'))) ||
+      contentType.includes('text/html')
+    ) {
+      return Promise.reject(new Error('Vercel SPA rewrite returned HTML instead of API JSON'));
+    }
+    return response;
+  },
+  (error) => Promise.reject(error)
+);
+
 export default api;

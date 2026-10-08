@@ -30,11 +30,17 @@ export const DetectionDetailPage: React.FC = () => {
   useEffect(() => {
     if (!id) return;
     api.get<DetectionRecord>(`/api/detections/${id}`)
-      .then((res) => setRecord(res.data))
+      .then((res) => {
+        if (res.data && typeof res.data === 'object' && res.data.id) {
+          setRecord(res.data);
+        } else {
+          throw new Error('Invalid record data');
+        }
+      })
       .catch(() => {
         // Fallback to local demo history for Vercel deployment
         const history = getDemoHistory();
-        const found = history.find(r => r.id === parseInt(id));
+        const found = Array.isArray(history) ? history.find(r => r.id === parseInt(id)) : undefined;
         if (found) {
           setRecord(found);
         } else {
