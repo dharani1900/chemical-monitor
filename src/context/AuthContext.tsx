@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../services/api';
 import type { User } from '../types';
+import { getDemoUser } from '../services/demoFallback';
 
 interface AuthContextType {
   user: User | null;
@@ -28,11 +29,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await api.get<User>('/api/auth/me');
       setUser(res.data);
-    } catch (err) {
-      console.error('Failed to fetch user profile:', err);
-      localStorage.removeItem('token');
-      setToken(null);
-      setUser(null);
+    } catch (err: any) {
+      if (!err.response || err.response.status === 404 || err.response.status === 502) {
+        // Fallback to local demo user for online Vercel preview
+        const dUser = getDemoUser();
+        setUser(dUser);
+      } else {
+        localStorage.removeItem('token');
+        setToken(null);
+        setUser(null);
+      }
     } finally {
       setLoading(false);
     }

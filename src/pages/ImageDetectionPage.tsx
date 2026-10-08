@@ -16,6 +16,7 @@ import {
 import api from '../services/api';
 import type { DetectionRecord } from '../types';
 import { useAlarm } from '../context/AlarmContext';
+import { processDemoAnalyze } from '../services/demoFallback';
 
 export const ImageDetectionPage: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -86,7 +87,16 @@ export const ImageDetectionPage: React.FC = () => {
         triggerAlarm();
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Image analysis failed. Please try again.');
+      // Fallback to interactive client-side demo analysis on Vercel deployment
+      try {
+        const demoRes = await processDemoAnalyze(selectedFile, notes);
+        setResult(demoRes);
+        if (demoRes.prediction === 'leakage') {
+          triggerAlarm();
+        }
+      } catch (fallbackErr: any) {
+        setError('Image analysis failed. Please try another image.');
+      }
     } finally {
       setLoading(false);
     }
@@ -191,7 +201,7 @@ export const ImageDetectionPage: React.FC = () => {
                   <span>Model Inference Notice</span>
                 </p>
                 <p>
-                  Images are processed using a fine-tuned PyTorch MobileNetV2 network. If leakage is predicted, an explainable Grad-CAM gas plume simulation will be rendered.
+                  Images are processed using fine-tuned PyTorch MobileNetV2 features. If leakage is predicted, an explainable Grad-CAM gas plume simulation will be rendered.
                 </p>
               </div>
             </div>

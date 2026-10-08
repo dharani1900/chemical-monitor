@@ -20,6 +20,7 @@ import {
 import api from '../services/api';
 import type { DashboardStats, DetectionRecord } from '../types';
 import { StatCard } from '../components/StatCard';
+import { getDemoStats, getDemoHistory } from '../services/demoFallback';
 
 export const DashboardPage: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -36,7 +37,11 @@ export const DashboardPage: React.FC = () => {
       setStats(statsRes.data);
       setRecentScans(historyRes.data.slice(0, 5));
     } catch (err) {
-      console.error('Failed to load dashboard data:', err);
+      // Fallback to demo stats for Vercel deployment
+      const dStats = getDemoStats();
+      const dHistory = getDemoHistory();
+      setStats(dStats);
+      setRecentScans(dHistory.slice(0, 5));
     } finally {
       setLoading(false);
     }

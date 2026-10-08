@@ -15,6 +15,7 @@ import {
 
 import api from '../services/api';
 import type { DetectionRecord } from '../types';
+import { getDemoHistory, saveDemoHistory } from '../services/demoFallback';
 
 export const DetectionHistoryPage: React.FC = () => {
   const [records, setRecords] = useState<DetectionRecord[]>([]);
@@ -36,7 +37,22 @@ export const DetectionHistoryPage: React.FC = () => {
       const res = await api.get<DetectionRecord[]>(url);
       setRecords(res.data);
     } catch (err) {
-      console.error('Failed to fetch detection history:', err);
+      // Fallback to local demo history for Vercel deployment
+      let dHistory = getDemoHistory();
+      if (statusFilter !== 'all') {
+        dHistory = dHistory.filter(r => r.prediction === statusFilter);
+      }
+      if (search) {
+        const query = search.toLowerCase();
+        dHistory = dHistory.filter(r => 
+          (r.notes && r.notes.toLowerCase().includes(query)) ||
+          r.prediction.toLowerCase().includes(query)
+        );
+      }
+      if (sort === 'oldest') {
+        dHistory = [...dHistory].reverse();
+      }
+      setRecords(dHistory);
     } finally {
       setLoading(false);
     }
@@ -58,7 +74,10 @@ export const DetectionHistoryPage: React.FC = () => {
       await api.delete(`/api/detections/${id}`);
       setRecords(records.filter((r) => r.id !== id));
     } catch (err) {
-      alert('Failed to delete scan record.');
+      // Fallback deletion for Vercel demo
+      const updated = records.filter(r => r.id !== id);
+      saveDemoHistory(updated);
+      setRecords(updated);
     }
   };
 

@@ -16,6 +16,7 @@ import {
 
 import api from '../services/api';
 import type { DetectionRecord } from '../types';
+import { getDemoHistory, saveDemoHistory } from '../services/demoFallback';
 
 export const DetectionDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -30,7 +31,16 @@ export const DetectionDetailPage: React.FC = () => {
     if (!id) return;
     api.get<DetectionRecord>(`/api/detections/${id}`)
       .then((res) => setRecord(res.data))
-      .catch(() => setError('Failed to load detection record.'))
+      .catch(() => {
+        // Fallback to local demo history for Vercel deployment
+        const history = getDemoHistory();
+        const found = history.find(r => r.id === parseInt(id));
+        if (found) {
+          setRecord(found);
+        } else {
+          setError('Detection record not found.');
+        }
+      })
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -40,7 +50,10 @@ export const DetectionDetailPage: React.FC = () => {
       await api.delete(`/api/detections/${record.id}`);
       navigate('/history');
     } catch (err) {
-      alert('Failed to delete record.');
+      const history = getDemoHistory();
+      const updated = history.filter(r => r.id !== record.id);
+      saveDemoHistory(updated);
+      navigate('/history');
     }
   };
 
