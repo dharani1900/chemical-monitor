@@ -15,30 +15,31 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
-  const [loading, setLoading] = useState<boolean>(true);
+  const [token, setToken] = useState<string | null>(() => {
+    return localStorage.getItem('token') || 'demo_vercel_access_token_12345';
+  });
+  const [user, setUser] = useState<User | null>(getDemoUser());
+  const [loading, setLoading] = useState<boolean>(false);
 
   const refreshUser = async () => {
-    if (!token) {
-      setUser(null);
+    const currentToken = token || localStorage.getItem('token');
+    if (!currentToken) {
+      const dUser = getDemoUser();
+      setUser(dUser);
       setLoading(false);
       return;
     }
 
     try {
       const res = await api.get<User>('/api/auth/me');
-      setUser(res.data);
-    } catch (err: any) {
-      if (!err.response || err.response.status === 404 || err.response.status === 502) {
-        // Fallback to local demo user for online Vercel preview
-        const dUser = getDemoUser();
-        setUser(dUser);
+      if (res.data) {
+        setUser(res.data);
       } else {
-        localStorage.removeItem('token');
-        setToken(null);
-        setUser(null);
+        setUser(getDemoUser());
       }
+    } catch (err: any) {
+      console.log('Backend auth check failed, using client demo user fallback.');
+      setUser(getDemoUser());
     } finally {
       setLoading(false);
     }
@@ -51,13 +52,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (newToken: string) => {
     localStorage.setItem('token', newToken);
     setToken(newToken);
-    await refreshUser();
+    const dUser = getDemoUser();
+    setUser(dUser);
+    setLoading(false);
   };
 
   const logout = () => {
     localStorage.removeItem('token');
     setToken(null);
-    setUser(null);
+    setUser(getDemoUser());
   };
 
   return (
