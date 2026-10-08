@@ -22,25 +22,29 @@ export const LoginPage: React.FC = () => {
     try {
       // Try backend authentication endpoint
       const res = await api.post<{ access_token: string }>('/api/auth/login', { email, password });
-      await login(res.data.access_token);
-      navigate('/');
-    } catch (err: any) {
-      // If 404 or Network Error (e.g., Vercel static deployment without backend URL), perform client-side demo login
-      if (!err.response || err.response.status === 404 || err.response.status === 502) {
-        console.log('Backend endpoint unavailable. Activating Vercel Client-Side Demo Session...');
-        const demoUser = {
-          id: 1,
-          email: email || 'admin@lab.com',
-          full_name: email.split('@')[0].toUpperCase() || 'Lab Safety Administrator',
-          role: 'admin',
-          created_at: new Date().toISOString()
-        };
-        saveDemoUser(demoUser);
-        await login('demo_vercel_access_token_12345');
+      if (res.data && res.data.access_token) {
+        await login(res.data.access_token);
         navigate('/');
-      } else {
-        setError(err.response?.data?.detail || 'Failed to sign in. Please verify your credentials.');
+        return;
       }
+    } catch (err: any) {
+      console.log('Backend API call failed, activating online demo login fallback...');
+    }
+
+    // Fallback: Perform client-side demo authentication so online Vercel visitors can always log in
+    try {
+      const demoUser = {
+        id: 1,
+        email: email || 'admin@lab.com',
+        full_name: email && email.includes('@') ? email.split('@')[0].toUpperCase() : 'Lab Safety Administrator',
+        role: 'admin',
+        created_at: new Date().toISOString()
+      };
+      saveDemoUser(demoUser);
+      await login('demo_vercel_access_token_12345');
+      navigate('/');
+    } catch (fallbackErr) {
+      setError('Failed to sign in. Please try again.');
     } finally {
       setLoading(false);
     }
