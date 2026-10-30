@@ -13,9 +13,10 @@ import {
   Layers
 } from 'lucide-react';
 
-import api from '../services/api';
+import api, { resolveImageUrl } from '../services/api';
 import type { DetectionRecord } from '../types';
-import { getDemoHistory, saveDemoHistory } from '../services/demoFallback';
+
+const LEAKAGE_DANGER_THRESHOLD = 0.525;
 
 export const DetectionHistoryPage: React.FC = () => {
   const [records, setRecords] = useState<DetectionRecord[]>([]);
@@ -23,9 +24,11 @@ export const DetectionHistoryPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sort, setSort] = useState<string>('newest');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchHistory = async () => {
     setLoading(true);
+    setError(null);
     try {
       let url = `/api/detections?sort=${sort}`;
       if (statusFilter !== 'all') {
@@ -40,24 +43,20 @@ export const DetectionHistoryPage: React.FC = () => {
       } else {
         throw new Error('Non-array history returned');
       }
-    } catch (err) {
-      // Fallback to local demo history for Vercel deployment
-      let dHistory = getDemoHistory();
-      if (!Array.isArray(dHistory)) dHistory = [];
-      if (statusFilter !== 'all') {
-        dHistory = dHistory.filter(r => r.prediction === statusFilter);
+    } catch (err: any) {
+      console.error('Failed to fetch detection history:', err);
+      let msg = 'Failed to load detection records.';
+      if (err.response?.status === 401) {
+        msg = 'Your session has expired. Please sign in again.';
+      } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        msg = 'Connection timed out. Please ensure the backend server is running.';
+      } else if (err.message?.includes('Network Error') || !err.response) {
+        msg = 'Unable to connect to backend server at http://127.0.0.1:8000.';
+      } else if (err.response?.data?.detail) {
+        msg = typeof err.response.data.detail === 'string' ? err.response.data.detail : msg;
       }
-      if (search) {
-        const query = search.toLowerCase();
-        dHistory = dHistory.filter(r => 
-          (r.notes && r.notes.toLowerCase().includes(query)) ||
-          r.prediction.toLowerCase().includes(query)
-        );
-      }
-      if (sort === 'oldest') {
-        dHistory = [...dHistory].reverse();
-      }
-      setRecords(dHistory);
+      setError(msg);
+      setRecords([]);
     } finally {
       setLoading(false);
     }
@@ -77,12 +76,9 @@ export const DetectionHistoryPage: React.FC = () => {
 
     try {
       await api.delete(`/api/detections/${id}`);
-      setRecords(records.filter((r) => r.id !== id));
-    } catch (err) {
-      // Fallback deletion for Vercel demo
-      const updated = records.filter(r => r.id !== id);
-      saveDemoHistory(updated);
-      setRecords(updated);
+      setRecords((prev) => prev.filter((r) => r.id !== id));
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to delete record. Please check server connection.');
     }
   };
 
@@ -129,7 +125,7 @@ export const DetectionHistoryPage: React.FC = () => {
               className="bg-transparent font-bold text-slate-800 focus:outline-none"
             >
               <option value="all">All Predictions</option>
-              <option value="leakage">Leakage Alerts Only</option>
+              <option value="leakage">Danger Alerts Only</option>
               <option value="no_leakage">Safe Cabinets Only</option>
             </select>
           </div>
@@ -155,6 +151,22 @@ export const DetectionHistoryPage: React.FC = () => {
         <div className="flex items-center justify-center p-12">
           <RefreshCw className="w-6 h-6 text-blue-600 animate-spin" />
         </div>
+      ) : error ? (
+        <div className="bg-white p-8 max-w-xl mx-auto text-center rounded-xl border border-red-200 text-slate-700 space-y-3">
+          <div className="inline-flex p-3 rounded-full bg-red-100 text-red-600 mx-auto">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <p className="text-sm font-bold text-slate-800">{error}</p>
+          <div>
+            <button
+              onClick={fetchHistory}
+              className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2 rounded-lg shadow-sm transition"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Retry</span>
+            </button>
+          </div>
+        </div>
       ) : records.length === 0 ? (
         <div className="bg-white p-12 text-center rounded-xl border border-slate-200 text-slate-500 space-y-2">
           <Layers className="w-10 h-10 text-slate-300 mx-auto" />
@@ -179,15 +191,17 @@ export const DetectionHistoryPage: React.FC = () => {
                   <div className="space-y-1">
                     <span className="text-[10px] text-slate-400 font-semibold block">RGB Image</span>
                     <img
-                      src={record.original_image_path}
+                      src={resolveImageUrl(record.original_image_path)}
                       alt="Original"
                       className="h-28 w-full object-cover rounded border border-slate-200"
                     />
                   </div>
                   <div className="space-y-1">
-                    <span className="text-[10px] text-slate-400 font-semibold block">Simulated Cloud</span>
+                    <span className="text-[10px] text-slate-400 font-semibold block">
+                      {record.prediction === 'leakage' && record.confidence >= LEAKAGE_DANGER_THRESHOLD ? 'Simulated Plume' : 'Safe Overlay'}
+                    </span>
                     <img
-                      src={record.visualization_image_path || record.original_image_path}
+                      src={resolveImageUrl(record.visualization_image_path || record.original_image_path)}
                       alt="Visualization"
                       className="h-28 w-full object-cover rounded border border-slate-200"
                     />
@@ -196,15 +210,15 @@ export const DetectionHistoryPage: React.FC = () => {
 
                 {/* Status Badge */}
                 <div className="flex items-center justify-between pt-1">
-                  {record.prediction === 'leakage' ? (
+                  {record.prediction === 'leakage' && record.confidence >= LEAKAGE_DANGER_THRESHOLD ? (
                     <span className="inline-flex items-center space-x-1 bg-red-100 text-red-700 font-bold text-xs px-2.5 py-1 rounded-full border border-red-300">
                       <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
-                      <span>Leakage Alert</span>
+                      <span>DANGER</span>
                     </span>
                   ) : (
                     <span className="inline-flex items-center space-x-1 bg-emerald-100 text-emerald-700 font-bold text-xs px-2.5 py-1 rounded-full border border-emerald-300">
                       <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Safe Status</span>
+                      <span>SAFE</span>
                     </span>
                   )}
 
@@ -233,7 +247,7 @@ export const DetectionHistoryPage: React.FC = () => {
                 <div className="flex items-center space-x-2">
                   {record.visualization_image_path && (
                     <a
-                      href={record.visualization_image_path}
+                      href={resolveImageUrl(record.visualization_image_path)}
                       download={`Cabinet_${record.id}.jpg`}
                       className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-200 rounded transition"
                       title="Download image"

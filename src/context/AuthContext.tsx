@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../services/api';
 import type { User } from '../types';
-import { getDemoUser } from '../services/demoFallback';
 
 interface AuthContextType {
   user: User | null;
@@ -15,31 +14,33 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [token, setToken] = useState<string | null>(() => {
-    return localStorage.getItem('token') || 'demo_vercel_access_token_12345';
-  });
-  const [user, setUser] = useState<User | null>(getDemoUser());
-  const [loading, setLoading] = useState<boolean>(false);
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
   const refreshUser = async () => {
-    const currentToken = token || localStorage.getItem('token');
+    const currentToken = localStorage.getItem('token');
     if (!currentToken) {
-      const dUser = getDemoUser();
-      setUser(dUser);
+      setToken(null);
+      setUser(null);
       setLoading(false);
       return;
     }
 
     try {
       const res = await api.get<User>('/api/auth/me');
-      if (res.data) {
+      if (res.data && res.data.id) {
         setUser(res.data);
+        setToken(currentToken);
       } else {
-        setUser(getDemoUser());
+        localStorage.removeItem('token');
+        setToken(null);
+        setUser(null);
       }
-    } catch (err: any) {
-      console.log('Backend auth check failed, using client demo user fallback.');
-      setUser(getDemoUser());
+    } catch {
+      localStorage.removeItem('token');
+      setToken(null);
+      setUser(null);
     } finally {
       setLoading(false);
     }
@@ -47,20 +48,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     refreshUser();
-  }, [token]);
+
+    const handleUnauthorized = () => {
+      localStorage.removeItem('token');
+      setToken(null);
+      setUser(null);
+      setLoading(false);
+    };
+
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => {
+      window.removeEventListener('auth:unauthorized', handleUnauthorized);
+    };
+  }, []);
 
   const login = async (newToken: string) => {
     localStorage.setItem('token', newToken);
     setToken(newToken);
-    const dUser = getDemoUser();
-    setUser(dUser);
-    setLoading(false);
+    setLoading(true);
+    try {
+      const res = await api.get<User>('/api/auth/me', {
+        headers: { Authorization: `Bearer ${newToken}` }
+      });
+      setUser(res.data);
+    } catch {
+      localStorage.removeItem('token');
+      setToken(null);
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const logout = () => {
     localStorage.removeItem('token');
     setToken(null);
-    setUser(getDemoUser());
+    setUser(null);
   };
 
   return (

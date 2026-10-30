@@ -11,12 +11,16 @@ import {
   FileText,
   Sliders,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  Info,
+  Volume2,
+  RefreshCw
 } from 'lucide-react';
 
-import api from '../services/api';
+import api, { resolveImageUrl } from '../services/api';
 import type { DetectionRecord } from '../types';
-import { getDemoHistory, saveDemoHistory } from '../services/demoFallback';
+
+const LEAKAGE_DANGER_THRESHOLD = 0.525;
 
 export const DetectionDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -27,27 +31,37 @@ export const DetectionDetailPage: React.FC = () => {
 
   const navigate = useNavigate();
 
-  useEffect(() => {
+  const fetchRecord = async () => {
     if (!id) return;
-    api.get<DetectionRecord>(`/api/detections/${id}`)
-      .then((res) => {
-        if (res.data && typeof res.data === 'object' && res.data.id) {
-          setRecord(res.data);
-        } else {
-          throw new Error('Invalid record data');
-        }
-      })
-      .catch(() => {
-        // Fallback to local demo history for Vercel deployment
-        const history = getDemoHistory();
-        const found = Array.isArray(history) ? history.find(r => r.id === parseInt(id)) : undefined;
-        if (found) {
-          setRecord(found);
-        } else {
-          setError('Detection record not found.');
-        }
-      })
-      .finally(() => setLoading(false));
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.get<DetectionRecord>(`/api/detections/${id}`);
+      if (res.data && typeof res.data === 'object' && res.data.id) {
+        setRecord(res.data);
+      } else {
+        throw new Error('Invalid record data received from server.');
+      }
+    } catch (err: any) {
+      console.error('Failed to load record:', err);
+      if (err.response?.status === 404) {
+        setError(`Detection record #${id} was not found in the database.`);
+      } else if (err.response?.status === 401) {
+        setError('Your session has expired. Please sign in again.');
+      } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        setError('Connection timed out. Please check that the backend server is running.');
+      } else if (err.message?.includes('Network Error') || !err.response) {
+        setError('Cannot reach backend server at http://127.0.0.1:8000.');
+      } else {
+        setError(err.response?.data?.detail || err.message || 'Detection record could not be loaded.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRecord();
   }, [id]);
 
   const handleDelete = async () => {
@@ -55,29 +69,45 @@ export const DetectionDetailPage: React.FC = () => {
     try {
       await api.delete(`/api/detections/${record.id}`);
       navigate('/history');
-    } catch (err) {
-      const history = getDemoHistory();
-      const updated = history.filter(r => r.id !== record.id);
-      saveDemoHistory(updated);
-      navigate('/history');
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to delete record. Please check server connection.');
     }
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="animate-spin text-blue-600 font-bold">Loading Scan Details...</div>
+        <div className="flex flex-col items-center space-y-3">
+          <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
+          <p className="text-sm text-slate-500 font-medium">Loading Scan Details...</p>
+        </div>
       </div>
     );
   }
 
   if (error || !record) {
     return (
-      <div className="p-8 text-center space-y-4">
-        <p className="text-red-600 font-bold">{error || 'Record not found.'}</p>
-        <Link to="/history" className="text-blue-600 underline font-semibold text-sm">
-          Return to History
-        </Link>
+      <div className="p-8 max-w-xl mx-auto my-12 bg-white rounded-xl border border-red-200 shadow-sm text-center space-y-4">
+        <div className="inline-flex p-3 rounded-full bg-red-100 text-red-600">
+          <AlertTriangle className="w-8 h-8" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-900">Unable to Display Scan</h2>
+        <p className="text-xs text-slate-600 leading-relaxed">{error || 'Record not found.'}</p>
+        <div className="pt-2 flex justify-center space-x-3">
+          <button
+            onClick={fetchRecord}
+            className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2.5 rounded-lg shadow-sm transition"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Retry</span>
+          </button>
+          <Link
+            to="/history"
+            className="inline-flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-lg border border-slate-300 transition"
+          >
+            <span>Return to History</span>
+          </Link>
+        </div>
       </div>
     );
   }
@@ -104,37 +134,69 @@ export const DetectionDetailPage: React.FC = () => {
       </div>
 
       {/* Primary Header Card */}
-      <div className={`p-6 rounded-2xl text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-        record.prediction === 'leakage' ? 'bg-red-600 border-2 border-red-700' : 'bg-emerald-600 border-2 border-emerald-700'
-      }`}>
-        <div className="flex items-center space-x-4">
-          <div className="bg-white/20 p-3 rounded-2xl">
-            {record.prediction === 'leakage' ? <AlertTriangle className="w-8 h-8 text-white" /> : <ShieldCheck className="w-8 h-8 text-white" />}
-          </div>
-          <div>
-            <span className="bg-white/20 text-white font-mono text-[11px] px-2.5 py-0.5 rounded uppercase tracking-wider font-bold">
-              Scan ID #{record.id}
-            </span>
-            <h2 className="text-2xl font-black tracking-tight mt-1">
-              {record.prediction === 'leakage' ? 'LEAKAGE ALERT PREDICTED' : 'SAFE CABINET STATUS'}
-            </h2>
-            <p className="text-xs text-white/90 mt-0.5">
-              Evaluated on {new Date(record.timestamp).toLocaleString()}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center space-x-3 bg-black/20 p-3 rounded-xl border border-white/20 text-xs font-mono">
-          <div>
-            <p className="text-[10px] text-white/70 uppercase">Confidence Score</p>
-            <p className="text-lg font-bold text-white">{(record.confidence * 100).toFixed(1)}%</p>
-          </div>
-          {record.severity && (
-            <div className="border-l border-white/30 pl-3">
-              <p className="text-[10px] text-white/70 uppercase">Estimated Severity</p>
-              <p className="text-lg font-bold text-amber-300">{record.severity}</p>
+      {(() => {
+        const isDanger = record.prediction === 'leakage' && record.confidence >= LEAKAGE_DANGER_THRESHOLD;
+        return (
+          <div
+            className={`p-6 rounded-2xl text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6 border-2 transition-all ${
+              isDanger
+                ? 'bg-red-600 border-red-700 animate-pulse-danger'
+                : 'bg-emerald-600 border-emerald-700'
+            }`}
+          >
+            <div className="flex items-center space-x-5">
+              <div className="bg-white/20 p-4 rounded-2xl backdrop-blur-sm shrink-0">
+                {isDanger ? (
+                  <AlertTriangle className="w-10 h-10 text-white" />
+                ) : (
+                  <ShieldCheck className="w-10 h-10 text-white" />
+                )}
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center space-x-3">
+                  <span className="text-3xl font-black tracking-tight">
+                    {isDanger ? 'DANGER' : 'SAFE'}
+                  </span>
+                  <span className="bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-mono font-bold tracking-wide">
+                    Confidence: {(record.confidence * 100).toFixed(1)}%
+                  </span>
+                </div>
+                <p className="text-sm font-medium text-white/95 leading-relaxed pt-1">
+                  {isDanger
+                    ? 'Immediate visual confirmation and secondary chemical sensor inspection required. Evacuate or isolate cabinet area if necessary.'
+                    : 'No optical features crossed the 52.5% danger threshold. Maintain routine scheduled inspection.'}
+                </p>
+              </div>
             </div>
-          )}
+
+            <div className="flex items-center md:self-center shrink-0">
+              <div
+                className={`px-4 py-2.5 rounded-xl border text-center font-bold text-xs uppercase tracking-wider flex items-center space-x-2 ${
+                  isDanger
+                    ? 'bg-red-800/90 border-red-400 text-red-100'
+                    : 'bg-emerald-800/90 border-emerald-400 text-emerald-100'
+                }`}
+              >
+                <Volume2
+                  className={`w-4 h-4 ${
+                    isDanger ? 'text-amber-300 animate-bounce' : 'text-emerald-300'
+                  }`}
+                />
+                <span>{isDanger ? 'Alarm Active' : 'Alarm Silent'}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Safety Disclaimer Banner */}
+      <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-xs text-amber-900 flex items-start space-x-3 shadow-sm">
+        <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+        <div className="space-y-0.5">
+          <strong className="font-bold text-amber-950">Safety Disclaimer & Sensor Scope:</strong>
+          <p>
+            Standard optical RGB cameras cannot detect invisible or colorless gas plumes and cannot certify an area is gas-free. A <strong>SAFE</strong> status indicates exclusively that optical image features did not meet the 52.5% leakage confidence threshold. Always corroborate with calibrated chemical sensor hardware and follow standard plant safety protocols.
+          </p>
         </div>
       </div>
 
@@ -151,7 +213,7 @@ export const DetectionDetailPage: React.FC = () => {
               onClick={() => setShowOverlay(!showOverlay)}
               className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs px-3 py-1.5 rounded-lg border border-slate-300 transition"
             >
-              {showOverlay ? 'Hide Simulated Plume Overlay' : 'Show Simulated Plume Overlay'}
+              {showOverlay ? 'Hide Visual Overlay' : 'Show Visual Overlay'}
             </button>
           )}
         </div>
@@ -165,7 +227,7 @@ export const DetectionDetailPage: React.FC = () => {
             </p>
             <div className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 shadow-inner flex items-center justify-center min-h-[320px]">
               <img
-                src={record.original_image_path}
+                src={resolveImageUrl(record.original_image_path)}
                 alt="Original Cabinet"
                 className="max-h-96 w-full object-contain"
               />
@@ -176,11 +238,11 @@ export const DetectionDetailPage: React.FC = () => {
           <div className="space-y-2">
             <p className="text-xs font-bold text-slate-600 uppercase tracking-wide flex items-center space-x-1">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>AI Grad-CAM & Simulated Gas Plume</span>
+              <span>{record.prediction === 'leakage' && record.confidence >= LEAKAGE_DANGER_THRESHOLD ? 'AI Grad-CAM Simulated Plume' : 'Verified Safe Status Overlay'}</span>
             </p>
             <div className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 shadow-inner flex items-center justify-center min-h-[320px]">
               <img
-                src={showOverlay && record.visualization_image_path ? record.visualization_image_path : record.original_image_path}
+                src={resolveImageUrl(showOverlay && record.visualization_image_path ? record.visualization_image_path : record.original_image_path)}
                 alt="Simulated Visualization"
                 className="max-h-96 w-full object-contain"
               />
@@ -191,7 +253,7 @@ export const DetectionDetailPage: React.FC = () => {
         {record.visualization_image_path && (
           <div className="pt-2 flex justify-end">
             <a
-              href={record.visualization_image_path}
+              href={resolveImageUrl(record.visualization_image_path)}
               download={`Cabinet_Result_${record.id}.jpg`}
               className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-4 py-2 rounded-lg transition shadow flex items-center space-x-2"
             >

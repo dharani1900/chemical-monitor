@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ShieldAlert, Lock, Mail, ArrowRight, CheckCircle, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
-import { saveDemoUser } from '../services/demoFallback';
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -20,31 +19,25 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
 
     try {
-      // Try backend authentication endpoint
       const res = await api.post<{ access_token: string }>('/api/auth/login', { email, password });
       if (res.data && res.data.access_token) {
         await login(res.data.access_token);
         navigate('/');
         return;
       }
+      throw new Error('Authentication failed: no access token returned.');
     } catch (err: any) {
-      console.log('Backend API call failed, activating online demo login fallback...');
-    }
-
-    // Fallback: Perform client-side demo authentication so online Vercel visitors can always log in
-    try {
-      const demoUser = {
-        id: 1,
-        email: email || 'admin@lab.com',
-        full_name: email && email.includes('@') ? email.split('@')[0].toUpperCase() : 'Lab Safety Administrator',
-        role: 'admin',
-        created_at: new Date().toISOString()
-      };
-      saveDemoUser(demoUser);
-      await login('demo_vercel_access_token_12345');
-      navigate('/');
-    } catch (fallbackErr) {
-      setError('Failed to sign in. Please try again.');
+      if (err.response?.status === 401) {
+        setError('Incorrect email or password. Please verify your credentials.');
+      } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        setError('Connection timed out. Please ensure the backend server is running at http://127.0.0.1:8000.');
+      } else if (err.response?.data?.detail) {
+        setError(typeof err.response.data.detail === 'string' ? err.response.data.detail : 'Authentication failed.');
+      } else if (err.message?.includes('Network Error') || !err.response) {
+        setError('Cannot connect to backend server. Please verify http://127.0.0.1:8000 is active.');
+      } else {
+        setError(err.message || 'Failed to sign in. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -139,8 +132,8 @@ export const LoginPage: React.FC = () => {
 
         {/* Scientific limitation note */}
         <p className="mt-6 text-center text-[11px] text-slate-500 max-w-sm mx-auto flex items-center justify-center space-x-1">
-          <Sparkles className="w-3 h-3 text-amber-400 inline" />
-          <span>Vercel Interactive Demo enabled. Works online with or without local backend.</span>
+          <Sparkles className="w-3 h-3 text-blue-400 inline" />
+          <span>Smart Chemical Storage Cabinet Monitoring Console & AI Safety System.</span>
         </p>
       </div>
     </div>

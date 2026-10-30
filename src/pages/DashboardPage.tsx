@@ -17,18 +17,21 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, Cell 
 } from 'recharts';
 
-import api from '../services/api';
+import api, { resolveImageUrl } from '../services/api';
 import type { DashboardStats, DetectionRecord } from '../types';
 import { StatCard } from '../components/StatCard';
-import { getDemoStats, getDemoHistory } from '../services/demoFallback';
+
+const LEAKAGE_DANGER_THRESHOLD = 0.52;
 
 export const DashboardPage: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentScans, setRecentScans] = useState<DetectionRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchDashboardData = async () => {
     setLoading(true);
+    setError(null);
     try {
       const [statsRes, historyRes] = await Promise.all([
         api.get<DashboardStats>('/api/dashboard/stats'),
@@ -45,12 +48,19 @@ export const DashboardPage: React.FC = () => {
       } else {
         throw new Error('Non-JSON response received from backend');
       }
-    } catch (err) {
-      // Fallback to demo stats for Vercel deployment
-      const dStats = getDemoStats();
-      const dHistory = getDemoHistory();
-      setStats(dStats);
-      setRecentScans(Array.isArray(dHistory) ? dHistory.slice(0, 5) : []);
+    } catch (err: any) {
+      console.error('Failed to load dashboard data:', err);
+      let msg = 'Failed to load dashboard statistics.';
+      if (err.response?.status === 401) {
+        msg = 'Your session has expired or authentication is invalid. Please sign in again.';
+      } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        msg = 'Connection to backend timed out. Please ensure the backend server is running at http://127.0.0.1:8000.';
+      } else if (err.message?.includes('Network Error') || !err.response) {
+        msg = 'Unable to connect to backend server at http://127.0.0.1:8000. Please start the server and retry.';
+      } else if (err.response?.data?.detail) {
+        msg = typeof err.response.data.detail === 'string' ? err.response.data.detail : msg;
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -60,12 +70,39 @@ export const DashboardPage: React.FC = () => {
     fetchDashboardData();
   }, []);
 
-  if (loading) {
+  if (loading && !stats) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="flex flex-col items-center space-y-3">
           <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
           <p className="text-sm text-slate-500 font-medium">Loading Industrial Safety Console...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !stats) {
+    return (
+      <div className="p-8 max-w-2xl mx-auto my-12 bg-white rounded-xl border border-red-200 shadow-sm text-center space-y-4">
+        <div className="inline-flex p-3 rounded-full bg-red-100 text-red-600">
+          <AlertTriangle className="w-8 h-8" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-900">Unable to Load Dashboard Data</h2>
+        <p className="text-xs text-slate-600 leading-relaxed">{error}</p>
+        <div className="pt-2 flex justify-center space-x-3">
+          <button
+            onClick={fetchDashboardData}
+            className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2.5 rounded-lg shadow-sm transition"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Retry Connection</span>
+          </button>
+          <Link
+            to="/login"
+            className="inline-flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-lg border border-slate-300 transition"
+          >
+            <span>Sign In</span>
+          </Link>
         </div>
       </div>
     );
@@ -111,18 +148,18 @@ export const DashboardPage: React.FC = () => {
         />
 
         <StatCard
-          title="Leakage Alerts"
+          title="Danger Alerts"
           value={stats?.leakage_predictions || 0}
-          subtitle="Simulated Risk Warnings"
+          subtitle="Leakage >= 52.0% Conf"
           icon={ShieldAlert}
           color="red"
-          badgeText="Action Recommended"
+          badgeText="Immediate Action"
         />
 
         <StatCard
           title="Safe Cabinets"
           value={stats?.safe_predictions || 0}
-          subtitle="Normal Indications"
+          subtitle="Normal or <52.0% Conf"
           icon={ShieldCheck}
           color="green"
           badgeText="Nominal Status"
@@ -130,10 +167,18 @@ export const DashboardPage: React.FC = () => {
 
         <StatCard
           title="Latest Detection"
-          value={stats?.latest_detection ? stats.latest_detection.prediction.toUpperCase() : 'N/A'}
+          value={
+            stats?.latest_detection
+              ? (stats.latest_detection.prediction === 'leakage' && stats.latest_detection.confidence >= LEAKAGE_DANGER_THRESHOLD ? 'DANGER' : 'SAFE')
+              : 'N/A'
+          }
           subtitle={stats?.latest_detection ? new Date(stats.latest_detection.timestamp).toLocaleTimeString() : 'No scans yet'}
           icon={Clock}
-          color={stats?.latest_detection?.prediction === 'leakage' ? 'red' : 'indigo'}
+          color={
+            stats?.latest_detection
+              ? (stats.latest_detection.prediction === 'leakage' && stats.latest_detection.confidence >= LEAKAGE_DANGER_THRESHOLD ? 'red' : 'green')
+              : 'indigo'
+          }
           badgeText={stats?.latest_detection ? `Conf: ${(stats.latest_detection.confidence * 100).toFixed(1)}%` : 'Ready'}
         />
 
@@ -248,22 +293,22 @@ export const DashboardPage: React.FC = () => {
                     <td className="px-5 py-3.5 font-mono text-slate-900 font-bold">#{record.id}</td>
                     <td className="px-5 py-3.5">
                       <img
-                        src={record.original_image_path}
+                        src={resolveImageUrl(record.original_image_path)}
                         alt="Cabinet preview"
                         className="w-10 h-10 object-cover rounded border border-slate-200 shadow-sm"
                       />
                     </td>
                     <td className="px-5 py-3.5">{new Date(record.timestamp).toLocaleString()}</td>
                     <td className="px-5 py-3.5">
-                      {record.prediction === 'leakage' ? (
+                      {record.prediction === 'leakage' && record.confidence >= LEAKAGE_DANGER_THRESHOLD ? (
                         <span className="inline-flex items-center space-x-1 bg-red-100 text-red-700 font-bold px-2.5 py-1 rounded-full border border-red-300">
                           <AlertTriangle className="w-3 h-3 text-red-600" />
-                          <span>Leakage Alert</span>
+                          <span>DANGER</span>
                         </span>
                       ) : (
                         <span className="inline-flex items-center space-x-1 bg-emerald-100 text-emerald-700 font-bold px-2.5 py-1 rounded-full border border-emerald-300">
                           <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                          <span>Safe Status</span>
+                          <span>SAFE</span>
                         </span>
                       )}
                     </td>
