@@ -17,8 +17,14 @@ api.interceptors.request.use((config) => {
 
   // When sending FormData, delete Content-Type to let browser/Axios append boundary
   if (config.data instanceof FormData) {
-    delete config.headers['Content-Type'];
-  } else if (!config.headers['Content-Type']) {
+    if (config.headers && typeof (config.headers as any).delete === 'function') {
+      (config.headers as any).delete('Content-Type');
+      (config.headers as any).delete('content-type');
+    } else if (config.headers) {
+      delete config.headers['Content-Type'];
+      delete config.headers['content-type'];
+    }
+  } else if (config.headers && !config.headers['Content-Type'] && !config.headers['content-type']) {
     config.headers['Content-Type'] = 'application/json';
   }
 
@@ -36,7 +42,9 @@ api.interceptors.response.use(
          response.data.trim().startsWith('<!'))) ||
       contentType.includes('text/html')
     ) {
-      return Promise.reject(new Error('Backend endpoint returned HTML instead of API JSON'));
+      const err: any = new Error('Backend endpoint returned HTML instead of API JSON');
+      err.response = response;
+      return Promise.reject(err);
     }
     return response;
   },
