@@ -1,8 +1,11 @@
 import axios from 'axios';
 
+const DEFAULT_API_URL = 'https://chemical-monitor-api.onrender.com';
+export const API_BASE_URL = (import.meta.env.VITE_API_URL || DEFAULT_API_URL).trim().replace(/\/+$/, '');
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/',
-  timeout: 10000, // 10 second timeout to prevent infinite pending requests
+  baseURL: API_BASE_URL,
+  timeout: 45000, // 45 second timeout to handle Render cold-starts gracefully
 });
 
 // Interceptor to attach JWT token and ensure FormData has correct boundary
@@ -62,10 +65,8 @@ export function resolveImageUrl(path: string | undefined | null): string {
   if (path.startsWith('data:') || path.startsWith('blob:') || path.startsWith('http://') || path.startsWith('https://')) {
     return path;
   }
-  const rawBase = import.meta.env.VITE_API_URL || '';
-  const baseUrl = typeof rawBase === 'string' ? rawBase.replace(/\/+$/, '') : '';
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  return baseUrl ? `${baseUrl}${cleanPath}` : cleanPath;
+  return `${API_BASE_URL}${cleanPath}`;
 }
 
 export default api;

@@ -30,11 +30,11 @@ export const LoginPage: React.FC = () => {
       if (err.response?.status === 401) {
         setError('Incorrect email or password. Please verify your credentials.');
       } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
-        setError('Connection timed out. Please ensure the backend server is running at http://127.0.0.1:8000.');
+        setError('Connection timed out. The backend server may be waking up or unreachable. Please try again.');
       } else if (err.response?.data?.detail) {
         setError(typeof err.response.data.detail === 'string' ? err.response.data.detail : 'Authentication failed.');
       } else if (err.message?.includes('Network Error') || !err.response) {
-        setError('Cannot connect to backend server. Please verify http://127.0.0.1:8000 is active.');
+        setError('Cannot connect to backend server. Please verify network connectivity and that the API service is online.');
       } else {
         setError(err.message || 'Failed to sign in. Please try again.');
       }

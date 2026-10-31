@@ -128,7 +128,7 @@ export const ImageDetectionPage: React.FC = () => {
           userMsg = typeof detail === 'string' ? `Server error: ${detail}` : 'Internal server error during model inference.';
         }
       } else if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error') || !err.response) {
-        userMsg = 'Unable to connect to backend server at http://127.0.0.1:8000. Please verify the backend is running.';
+        userMsg = 'Unable to connect to backend server. Please verify network connectivity and that the API service is online.';
       } else if (err.message) {
         userMsg = err.message;
       }

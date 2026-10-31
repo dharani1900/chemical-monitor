@@ -51,7 +51,7 @@ export const DetectionHistoryPage: React.FC = () => {
       } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
         msg = 'Connection timed out. Please ensure the backend server is running.';
       } else if (err.message?.includes('Network Error') || !err.response) {
-        msg = 'Unable to connect to backend server at http://127.0.0.1:8000.';
+        msg = 'Unable to connect to backend server. Please verify network connectivity and that the API service is online.';
       } else if (err.response?.data?.detail) {
         msg = typeof err.response.data.detail === 'string' ? err.response.data.detail : msg;
       }

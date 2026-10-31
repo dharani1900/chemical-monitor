@@ -21,7 +21,7 @@ import api, { resolveImageUrl } from '../services/api';
 import type { DashboardStats, DetectionRecord } from '../types';
 import { StatCard } from '../components/StatCard';
 
-const LEAKAGE_DANGER_THRESHOLD = 0.52;
+const LEAKAGE_DANGER_THRESHOLD = 0.525;
 
 export const DashboardPage: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -54,9 +54,9 @@ export const DashboardPage: React.FC = () => {
       if (err.response?.status === 401) {
         msg = 'Your session has expired or authentication is invalid. Please sign in again.';
       } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
-        msg = 'Connection to backend timed out. Please ensure the backend server is running at http://127.0.0.1:8000.';
+        msg = 'Connection to backend timed out. The backend server may be waking up or unreachable. Please retry.';
       } else if (err.message?.includes('Network Error') || !err.response) {
-        msg = 'Unable to connect to backend server at http://127.0.0.1:8000. Please start the server and retry.';
+        msg = 'Unable to connect to backend server. Please verify network connectivity and that the API service is online.';
       } else if (err.response?.data?.detail) {
         msg = typeof err.response.data.detail === 'string' ? err.response.data.detail : msg;
       }
@@ -150,7 +150,7 @@ export const DashboardPage: React.FC = () => {
         <StatCard
           title="Danger Alerts"
           value={stats?.leakage_predictions || 0}
-          subtitle="Leakage >= 52.0% Conf"
+          subtitle="Leakage >= 52.5% Conf"
           icon={ShieldAlert}
           color="red"
           badgeText="Immediate Action"
@@ -159,7 +159,7 @@ export const DashboardPage: React.FC = () => {
         <StatCard
           title="Safe Cabinets"
           value={stats?.safe_predictions || 0}
-          subtitle="Normal or <52.0% Conf"
+          subtitle="Normal or <52.5% Conf"
           icon={ShieldCheck}
           color="green"
           badgeText="Nominal Status"

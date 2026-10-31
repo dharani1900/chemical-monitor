@@ -51,7 +51,7 @@ export const DetectionDetailPage: React.FC = () => {
       } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
         setError('Connection timed out. Please check that the backend server is running.');
       } else if (err.message?.includes('Network Error') || !err.response) {
-        setError('Cannot reach backend server at http://127.0.0.1:8000.');
+        setError('Cannot reach backend server. Please verify network connectivity and that the API service is online.');
       } else {
         setError(err.response?.data?.detail || err.message || 'Detection record could not be loaded.');
       }
